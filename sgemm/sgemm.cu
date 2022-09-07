@@ -6,19 +6,19 @@
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
 
-#define OFFSET(row,col,ld) (row*ld+col)
+#define OFFSET(row, col, ld) ((row) * (ld) + (col))
 #define FEATCH_FLOAT4(pointer)(reinterpret_cast<float4*>(&(pointer))[0])
 
 
 template<
     const int BM,
-    const int BN,
     const int BK,
+    const int BN,
     const int RM,
     const int RN,
     const bool double_buffer
 >
-__global__ void sgemm(
+__global__ void Sgemm(
     float* __restrict__ A,
     float* __restrict__ B,
     float* __restrict__ C,
@@ -205,24 +205,27 @@ __global__ void sgemm(
     }   
 
 }
+
+
+
 int main(int argc,char ** argv)
 {
     if (argc != 4)
     {
-        printf("please input ./main M N K");
+        printf("please input ./main M K N");
         exit(0);
     }
 
     const int M = atoi(argv[1]);
-    const int N = atoi(argv[2]);
-    const int K = atoi(argv[3]);
+    const int K = atoi(argv[2]);
+    const int N = atoi(argv[3]);
     assert( M%8 == 0); 
     assert( N%8 == 0); 
     assert( K%8 == 0); 
 
-    float bytes_A = M*K;
-    float bytes_B = K*N;
-    float bytes_C = M*N;
+    float bytes_A = sizeof(float)*M*K;
+    float bytes_B = sizeof(float)*K*N;
+    float bytes_C = sizeof(float)*M*N;
 
     float *A = (float*) malloc(bytes_A*sizeof(float));
     float *B = (float*) malloc(bytes_B*sizeof(float));
@@ -266,7 +269,7 @@ int main(int argc,char ** argv)
     {
         dim3 Grid(N/BN,M/BM);
         dim3 Block(BN/RN,BM/RM);
-        sgemm<BM,BN,BK,RM,RN,DOUBLE_BUFFER><<<Grid,Block>>>(d_A,d_B,d_C,M,N,K);
+        Sgemm<BM,BK,BN,RM,RN,DOUBLE_BUFFER><<<Grid,Block>>>(d_A,d_B,d_C,M,N,K);
     }
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
@@ -308,7 +311,7 @@ int main(int argc,char ** argv)
 
     cublasDestroy(blas_handle); 
     
-    double eps = 1.e-6;  // machine zero
+    double eps = 1.e-6;  
     bool correct = true;
     for (int i = 0; i < M * N; i++) {
         int row = i / N;
@@ -328,7 +331,6 @@ int main(int argc,char ** argv)
     printf("%s\n", correct ? "Result= PASS" : "Result= FAIL");
     printf("ratio= %f\n", gigaFlops[0] / gigaFlops[1]);
     
-    // Free Memory
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C);
